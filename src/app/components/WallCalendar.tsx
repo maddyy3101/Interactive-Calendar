@@ -26,7 +26,7 @@ interface MonthTheme {
 interface Holiday {
   date: string;
   name: string;
-  kind: 'national' | 'festival';
+  kind: 'national' | 'festival' | 'custom';
 }
 
 const MONTH_THEMES: MonthTheme[] = [
@@ -68,15 +68,18 @@ const HOLIDAYS: Holiday[] = [
 ];
 const HOLIDAY_DOT_COLOR: Record<Holiday['kind'], string> = {
   national: '#ef4444',
-  festival: '#f97316',
+  festival: '#ef4444',
+  custom: '#ef4444',
 };
 const HOLIDAY_TINT_COLOR: Record<Holiday['kind'], string> = {
   national: 'rgba(239, 68, 68, 0.1)',
-  festival: 'rgba(249, 115, 22, 0.1)',
+  festival: 'rgba(239, 68, 68, 0.1)',
+  custom: 'rgba(239, 68, 68, 0.1)',
 };
 const HOLIDAY_BORDER_COLOR: Record<Holiday['kind'], string> = {
   national: 'rgba(239, 68, 68, 0.35)',
-  festival: 'rgba(249, 115, 22, 0.35)',
+  festival: 'rgba(239, 68, 68, 0.35)',
+  custom: 'rgba(239, 68, 68, 0.35)',
 };
 
 export function WallCalendar() {
@@ -92,6 +95,10 @@ export function WallCalendar() {
   const [pickerTransitionDirection, setPickerTransitionDirection] = useState(0);
   const [yearRangeDirection, setYearRangeDirection] = useState(0);
   const [activeHolidayDate, setActiveHolidayDate] = useState<string | null>(null);
+  const [customHolidays, setCustomHolidays] = useState<Holiday[]>([]);
+  const [isAddHolidayModalOpen, setIsAddHolidayModalOpen] = useState(false);
+  const [newHolidayName, setNewHolidayName] = useState('');
+  const [holidayFormError, setHolidayFormError] = useState('');
 
   // Load notes from localStorage
   useEffect(() => {
@@ -112,6 +119,30 @@ export function WallCalendar() {
     localStorage.setItem('calendar-notes', JSON.stringify(notes));
   }, [notes]);
 
+  useEffect(() => {
+    const savedHolidays = localStorage.getItem('calendar-custom-holidays');
+    if (!savedHolidays) return;
+
+    try {
+      const parsed = JSON.parse(savedHolidays);
+      if (!Array.isArray(parsed)) return;
+      const sanitized = parsed
+        .filter((item) => item && typeof item.date === 'string' && typeof item.name === 'string')
+        .map((item) => ({
+          date: item.date,
+          name: item.name,
+          kind: 'custom' as const,
+        }));
+      setCustomHolidays(sanitized);
+    } catch {
+      // Ignore malformed persisted holiday data.
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('calendar-custom-holidays', JSON.stringify(customHolidays));
+  }, [customHolidays]);
+
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
   const calendarStart = startOfWeek(monthStart);
@@ -119,18 +150,32 @@ export function WallCalendar() {
   const days = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
   const weeksInView = days.length / 7;
   const currentYear = currentDate.getFullYear();
+  const currentMonthKey = format(currentDate, 'yyyy-MM');
   const yearRange = Array.from({ length: YEAR_PAGE_SIZE }, (_, index) => yearRangeStart + index);
 
   const currentTheme = MONTH_THEMES[currentDate.getMonth()];
+  const allHolidays = useMemo(() => [...HOLIDAYS, ...customHolidays], [customHolidays]);
   const holidaysByDate = useMemo(
     () =>
-      HOLIDAYS.reduce<Record<string, Holiday>>((accumulator, holiday) => {
+      allHolidays.reduce<Record<string, Holiday>>((accumulator, holiday) => {
         accumulator[holiday.date] = holiday;
         return accumulator;
       }, {}),
-    []
+    [allHolidays]
+  );
+  const monthlyHolidays = useMemo(
+    () =>
+      allHolidays.filter((holiday) => holiday.date.startsWith(currentMonthKey)).sort((a, b) =>
+        a.date.localeCompare(b.date)
+      ),
+    [allHolidays, currentMonthKey]
   );
   const hasSelection = Boolean(selectedStart);
+  const isSingleDaySelection = Boolean(selectedStart && (!selectedEnd || isSameDay(selectedStart, selectedEnd)));
+  const selectedSingleDate = isSingleDaySelection ? selectedStart : null;
+  const selectedSingleDateKey = selectedSingleDate ? format(selectedSingleDate, 'yyyy-MM-dd') : null;
+  const selectedDateAlreadyHoliday = selectedSingleDateKey ? Boolean(holidaysByDate[selectedSingleDateKey]) : false;
+  const canOpenAddHoliday = Boolean(selectedSingleDateKey && !selectedDateAlreadyHoliday);
   const canAddNote = Boolean(noteText.trim() && selectedStart);
   const themeStyles = {
     '--calendar-bg-from': currentTheme.backgroundFrom,
@@ -266,6 +311,41 @@ export function WallCalendar() {
     setSelectedEnd(null);
   };
 
+  const openAddHolidayModal = () => {
+    if (!canOpenAddHoliday) return;
+    setNewHolidayName('');
+    setHolidayFormError('');
+    setIsAddHolidayModalOpen(true);
+  };
+
+  const handleSaveHoliday = () => {
+    if (!selectedSingleDateKey) return;
+    const holidayName = newHolidayName.trim();
+
+    if (!holidayName) {
+      setHolidayFormError('Please enter a holiday name.');
+      return;
+    }
+
+    if (holidaysByDate[selectedSingleDateKey]) {
+      setHolidayFormError('A holiday already exists for this date.');
+      return;
+    }
+
+    setCustomHolidays((previous) => [
+      ...previous,
+      {
+        date: selectedSingleDateKey,
+        name: holidayName,
+        kind: 'custom',
+      },
+    ]);
+    setIsAddHolidayModalOpen(false);
+    setHolidayFormError('');
+    setNewHolidayName('');
+    setActiveHolidayDate(selectedSingleDateKey);
+  };
+
   const getNotesForRange = () => {
     if (!selectedStart) return notes;
     return notes.filter(note => {
@@ -321,6 +401,40 @@ export function WallCalendar() {
     return styles;
   };
 
+  const formatHolidayDate = (isoDate: string) => {
+    const [year, month, day] = isoDate.split('-').map(Number);
+    return format(new Date(year, month - 1, day), 'MMM d');
+  };
+
+  const renderMonthlyHolidaySection = (compact = false) => (
+    <div className="mt-4 mb-14 shrink-0">
+      <h3 className={`${compact ? 'text-sm' : 'text-base'} mb-2 text-slate-700 font-medium`}>
+        Holidays this month
+      </h3>
+      <div className={`space-y-2 ${compact ? 'max-h-28' : 'max-h-36'} overflow-y-auto pr-1`}>
+        {monthlyHolidays.length === 0 ? (
+          <p className="text-slate-400 text-center py-3 text-sm">
+            No holidays this month
+          </p>
+        ) : (
+          monthlyHolidays.map((holiday) => (
+            <div
+              key={`${holiday.date}-${holiday.name}`}
+              className="border rounded-lg p-3"
+              style={{
+                backgroundColor: HOLIDAY_TINT_COLOR[holiday.kind],
+                borderColor: HOLIDAY_BORDER_COLOR[holiday.kind],
+              }}
+            >
+              <div className="text-xs text-slate-600 mb-1">{formatHolidayDate(holiday.date)}</div>
+              <p className={`${compact ? 'text-xs' : 'text-sm'} text-slate-700`}>{holiday.name}</p>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+
   useEffect(() => {
     if (!activePicker) return;
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -356,6 +470,26 @@ export function WallCalendar() {
   useEffect(() => {
     setActiveHolidayDate(null);
   }, [currentDate]);
+
+  useEffect(() => {
+    if (!isAddHolidayModalOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsAddHolidayModalOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isAddHolidayModalOpen]);
+
+  useEffect(() => {
+    if (isAddHolidayModalOpen && !canOpenAddHoliday) {
+      setIsAddHolidayModalOpen(false);
+    }
+  }, [canOpenAddHoliday, isAddHolidayModalOpen]);
 
   return (
     <div
@@ -613,6 +747,21 @@ export function WallCalendar() {
                 )}
               </div>
 
+              {renderMonthlyHolidaySection()}
+
+              <button
+                onClick={openAddHolidayModal}
+                disabled={!canOpenAddHoliday}
+                className="absolute bottom-4 left-4 rounded-lg border px-3 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50"
+                style={{
+                  backgroundColor: canOpenAddHoliday ? '#ffffff' : '#f1f5f9',
+                  borderColor: canOpenAddHoliday ? 'var(--calendar-accent-strong)' : '#cbd5e1',
+                  color: canOpenAddHoliday ? 'var(--calendar-accent-strong)' : '#64748b',
+                }}
+              >
+                + Add Holiday
+              </button>
+
               <button
                 onClick={clearSelection}
                 disabled={!hasSelection}
@@ -849,6 +998,21 @@ export function WallCalendar() {
               )}
             </div>
 
+            {renderMonthlyHolidaySection(true)}
+
+            <button
+              onClick={openAddHolidayModal}
+              disabled={!canOpenAddHoliday}
+              className="absolute bottom-4 left-4 rounded-lg border px-3 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50"
+              style={{
+                backgroundColor: canOpenAddHoliday ? '#ffffff' : '#f1f5f9',
+                borderColor: canOpenAddHoliday ? 'var(--calendar-accent-strong)' : '#cbd5e1',
+                color: canOpenAddHoliday ? 'var(--calendar-accent-strong)' : '#64748b',
+              }}
+            >
+              + Add Holiday
+            </button>
+
             <button
               onClick={clearSelection}
               disabled={!hasSelection}
@@ -1011,6 +1175,85 @@ export function WallCalendar() {
                   </motion.div>
                 )}
               </AnimatePresence>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isAddHolidayModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/35 backdrop-blur-sm"
+            onClick={() => setIsAddHolidayModalOpen(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 14, scale: 0.98 }}
+              transition={{ duration: 0.24 }}
+              className="w-full max-w-sm rounded-2xl bg-white shadow-2xl p-5"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-lg text-slate-900">Add Holiday</h3>
+                <button
+                  type="button"
+                  onClick={() => setIsAddHolidayModalOpen(false)}
+                  className="rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors"
+                  aria-label="Close add holiday modal"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <p className="mb-1 text-xs text-slate-500">Selected date</p>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    {selectedSingleDate ? format(selectedSingleDate, 'MMM d, yyyy') : 'No valid date selected'}
+                  </div>
+                </div>
+
+                <div>
+                  <input
+                    value={newHolidayName}
+                    onChange={(event) => {
+                      setNewHolidayName(event.target.value);
+                      if (holidayFormError) {
+                        setHolidayFormError('');
+                      }
+                    }}
+                    placeholder="Enter holiday name"
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--calendar-accent)] focus:border-transparent"
+                  />
+                </div>
+
+                {holidayFormError && (
+                  <p className="text-xs text-red-500">{holidayFormError}</p>
+                )}
+
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddHolidayModalOpen(false)}
+                    className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveHoliday}
+                    disabled={!newHolidayName.trim() || !canOpenAddHoliday}
+                    className="rounded-lg px-3 py-2 text-sm text-white transition disabled:cursor-not-allowed disabled:opacity-50"
+                    style={{ backgroundColor: 'var(--calendar-accent-strong)' }}
+                  >
+                    Save Holiday
+                  </button>
+                </div>
+              </div>
             </motion.div>
           </motion.div>
         )}
