@@ -146,3 +146,5 @@ Data saved in `localStorage`:
 ```bash
 npm run build
 ```
+# Component Structure Note
+- The core calendar logic is implemented in a single component for simplicity in this assignment. In a production setting, this would be modularized into smaller components (calendar grid, notes panel, modals) for better scalability and maintainability.
