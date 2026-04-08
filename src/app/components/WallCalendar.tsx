@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, type CSSProperties } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, ChevronRight, StickyNote, Trash2, Calendar as CalendarIcon, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, StickyNote, Trash2, Calendar as CalendarIcon, X, Pencil } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, isWithinInterval, startOfWeek, endOfWeek } from 'date-fns';
 
 interface Note {
@@ -29,6 +29,11 @@ interface Holiday {
   kind: 'national' | 'festival' | 'custom';
 }
 
+interface ToastMessage {
+  id: number;
+  message: string;
+}
+
 const MONTH_THEMES: MonthTheme[] = [
   { image: 'https://images.unsplash.com/photo-1613144332655-8d04c63d635a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3aW50ZXIlMjBzbm93JTIwbmF0dXJlJTIwc2NlbmV8ZW58MXx8fHwxNzc1NjU1ODUwfDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral', backgroundFrom: '#e8f3ff', backgroundTo: '#f8fcff', accent: '#60a5fa', accentSoft: '#dbeafe', accentStrong: '#2563eb', noteBackground: '#eff6ff', noteBorder: '#bfdbfe', noteMeta: '#1d4ed8' }, // January
   { image: 'https://images.unsplash.com/photo-1613144332655-8d04c63d635a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3aW50ZXIlMjBzbm93JTIwbmF0dXJlJTIwc2NlbmV8ZW58MXx8fHwxNzc1NjU1ODUwfDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral', backgroundFrom: '#fde7f3', backgroundTo: '#fff4fa', accent: '#f472b6', accentSoft: '#fce7f3', accentStrong: '#db2777', noteBackground: '#fff1f8', noteBorder: '#f9a8d4', noteMeta: '#be185d' }, // February
@@ -45,6 +50,7 @@ const MONTH_THEMES: MonthTheme[] = [
 ];
 
 type PickerMode = 'month' | 'year';
+type ThemeMode = 'light' | 'dark';
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const YEAR_PAGE_SIZE = 12;
@@ -96,9 +102,19 @@ export function WallCalendar() {
   const [yearRangeDirection, setYearRangeDirection] = useState(0);
   const [activeHolidayDate, setActiveHolidayDate] = useState<string | null>(null);
   const [customHolidays, setCustomHolidays] = useState<Holiday[]>([]);
+  const [editedBaseHolidayNames, setEditedBaseHolidayNames] = useState<Record<string, string>>({});
+  const [hiddenBaseHolidayDates, setHiddenBaseHolidayDates] = useState<string[]>([]);
   const [isAddHolidayModalOpen, setIsAddHolidayModalOpen] = useState(false);
+  const [holidayModalMode, setHolidayModalMode] = useState<'add' | 'edit'>('add');
+  const [holidayModalDate, setHolidayModalDate] = useState<string | null>(null);
+  const [holidayToDelete, setHolidayToDelete] = useState<Holiday | null>(null);
   const [newHolidayName, setNewHolidayName] = useState('');
   const [holidayFormError, setHolidayFormError] = useState('');
+  const [toast, setToast] = useState<ToastMessage | null>(null);
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
+    if (typeof window === 'undefined') return 'light';
+    return localStorage.getItem('theme') === 'dark' ? 'dark' : 'light';
+  });
 
   // Load notes from localStorage
   useEffect(() => {
@@ -143,6 +159,54 @@ export function WallCalendar() {
     localStorage.setItem('calendar-custom-holidays', JSON.stringify(customHolidays));
   }, [customHolidays]);
 
+  useEffect(() => {
+    localStorage.setItem('theme', themeMode);
+    const themeClassName = `${themeMode}-theme`;
+    document.body.classList.remove('light-theme', 'dark-theme');
+    document.body.classList.add(themeClassName);
+  }, [themeMode]);
+
+  useEffect(() => {
+    const savedEdits = localStorage.getItem('calendar-edited-holiday-names');
+    if (!savedEdits) return;
+
+    try {
+      const parsed = JSON.parse(savedEdits);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
+      const sanitized = Object.entries(parsed).reduce<Record<string, string>>((accumulator, [date, name]) => {
+        if (typeof date === 'string' && typeof name === 'string' && name.trim()) {
+          accumulator[date] = name;
+        }
+        return accumulator;
+      }, {});
+      setEditedBaseHolidayNames(sanitized);
+    } catch {
+      // Ignore malformed persisted holiday override data.
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('calendar-edited-holiday-names', JSON.stringify(editedBaseHolidayNames));
+  }, [editedBaseHolidayNames]);
+
+  useEffect(() => {
+    const savedHiddenDates = localStorage.getItem('calendar-hidden-holiday-dates');
+    if (!savedHiddenDates) return;
+
+    try {
+      const parsed = JSON.parse(savedHiddenDates);
+      if (!Array.isArray(parsed)) return;
+      const sanitized = parsed.filter((item) => typeof item === 'string');
+      setHiddenBaseHolidayDates(sanitized);
+    } catch {
+      // Ignore malformed persisted hidden holiday data.
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('calendar-hidden-holiday-dates', JSON.stringify(hiddenBaseHolidayDates));
+  }, [hiddenBaseHolidayDates]);
+
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
   const calendarStart = startOfWeek(monthStart);
@@ -154,7 +218,22 @@ export function WallCalendar() {
   const yearRange = Array.from({ length: YEAR_PAGE_SIZE }, (_, index) => yearRangeStart + index);
 
   const currentTheme = MONTH_THEMES[currentDate.getMonth()];
-  const allHolidays = useMemo(() => [...HOLIDAYS, ...customHolidays], [customHolidays]);
+  const isDarkTheme = themeMode === 'dark';
+  const baseHolidays = useMemo(
+    () =>
+      HOLIDAYS
+        .filter((holiday) => !hiddenBaseHolidayDates.includes(holiday.date))
+        .map((holiday) =>
+          editedBaseHolidayNames[holiday.date]
+            ? {
+                ...holiday,
+                name: editedBaseHolidayNames[holiday.date],
+              }
+            : holiday
+        ),
+    [editedBaseHolidayNames, hiddenBaseHolidayDates]
+  );
+  const allHolidays = useMemo(() => [...baseHolidays, ...customHolidays], [baseHolidays, customHolidays]);
   const holidaysByDate = useMemo(
     () =>
       allHolidays.reduce<Record<string, Holiday>>((accumulator, holiday) => {
@@ -176,7 +255,39 @@ export function WallCalendar() {
   const selectedSingleDateKey = selectedSingleDate ? format(selectedSingleDate, 'yyyy-MM-dd') : null;
   const selectedDateAlreadyHoliday = selectedSingleDateKey ? Boolean(holidaysByDate[selectedSingleDateKey]) : false;
   const canOpenAddHoliday = Boolean(selectedSingleDateKey && !selectedDateAlreadyHoliday);
+  const isEditingHoliday = holidayModalMode === 'edit';
+  const holidayModalDateValue = holidayModalDate
+    ? (() => {
+        const [year, month, day] = holidayModalDate.split('-').map(Number);
+        if (!year || !month || !day) return null;
+        return new Date(year, month - 1, day);
+      })()
+    : null;
+  const canSubmitHolidayModal = Boolean(
+    newHolidayName.trim() &&
+      holidayModalDate &&
+      (isEditingHoliday || !holidaysByDate[holidayModalDate])
+  );
   const canAddNote = Boolean(noteText.trim() && selectedStart);
+  const appThemeStyles = {
+    '--app-bg-from': currentTheme.backgroundFrom,
+    '--app-bg-to': currentTheme.backgroundTo,
+    '--app-surface': '#ffffff',
+    '--app-surface-border': 'rgba(148, 163, 184, 0.24)',
+    '--app-shadow': '0 18px 40px rgba(15, 23, 42, 0.18)',
+    '--app-toggle-bg': 'rgba(255, 255, 255, 0.92)',
+    '--app-toggle-border': 'rgba(148, 163, 184, 0.38)',
+    '--app-toggle-color': '#334155',
+    '--app-secondary-btn-disabled-bg': '#f1f5f9',
+    '--app-secondary-btn-disabled-text': '#64748b',
+    '--app-secondary-btn-enabled-bg': '#ffffff',
+    '--app-clear-disabled-bg': '#e2e8f0',
+    '--app-modal-overlay': 'rgba(15, 23, 42, 0.35)',
+    '--app-toast-bg': 'rgba(15, 23, 42, 0.95)',
+    '--app-toast-text': '#f8fafc',
+    '--app-global-filter': isDarkTheme ? 'brightness(0.87) saturate(0.9)' : 'brightness(1) saturate(1)',
+    '--app-dim-overlay': isDarkTheme ? 'rgba(0, 0, 0, 0.14)' : 'rgba(0, 0, 0, 0)',
+  } as CSSProperties;
   const themeStyles = {
     '--calendar-bg-from': currentTheme.backgroundFrom,
     '--calendar-bg-to': currentTheme.backgroundTo,
@@ -311,15 +422,44 @@ export function WallCalendar() {
     setSelectedEnd(null);
   };
 
+  const showToast = (message: string) => {
+    setToast({
+      id: Date.now(),
+      message,
+    });
+  };
+
   const openAddHolidayModal = () => {
-    if (!canOpenAddHoliday) return;
+    if (!selectedSingleDateKey || !canOpenAddHoliday) return;
+    setHolidayModalMode('add');
+    setHolidayModalDate(selectedSingleDateKey);
     setNewHolidayName('');
     setHolidayFormError('');
     setIsAddHolidayModalOpen(true);
   };
 
+  const openEditHolidayModal = (holiday: Holiday) => {
+    setHolidayModalMode('edit');
+    setHolidayModalDate(holiday.date);
+    setNewHolidayName(holiday.name);
+    setHolidayFormError('');
+    setIsAddHolidayModalOpen(true);
+  };
+
+  const openHolidayDeleteDialog = (holiday: Holiday) => {
+    setHolidayToDelete(holiday);
+  };
+
+  const closeHolidayModal = () => {
+    setIsAddHolidayModalOpen(false);
+    setHolidayFormError('');
+    setNewHolidayName('');
+    setHolidayModalDate(null);
+  };
+
   const handleSaveHoliday = () => {
-    if (!selectedSingleDateKey) return;
+    if (!holidayModalDate) return;
+    const dateKey = holidayModalDate;
     const holidayName = newHolidayName.trim();
 
     if (!holidayName) {
@@ -327,23 +467,76 @@ export function WallCalendar() {
       return;
     }
 
-    if (holidaysByDate[selectedSingleDateKey]) {
+    if (!isEditingHoliday && holidaysByDate[holidayModalDate]) {
       setHolidayFormError('A holiday already exists for this date.');
       return;
     }
 
-    setCustomHolidays((previous) => [
-      ...previous,
-      {
-        date: selectedSingleDateKey,
-        name: holidayName,
-        kind: 'custom',
-      },
-    ]);
-    setIsAddHolidayModalOpen(false);
-    setHolidayFormError('');
-    setNewHolidayName('');
-    setActiveHolidayDate(selectedSingleDateKey);
+    if (isEditingHoliday) {
+      const holidayToEdit = holidaysByDate[dateKey];
+      if (!holidayToEdit) {
+        setHolidayFormError('Could not find the selected holiday.');
+        return;
+      }
+
+      if (holidayToEdit.kind === 'custom') {
+        setCustomHolidays((previous) =>
+          previous.map((holiday) =>
+            holiday.date === dateKey
+              ? {
+                  ...holiday,
+                  name: holidayName,
+                }
+              : holiday
+          )
+        );
+      } else {
+        setEditedBaseHolidayNames((previous) => ({
+          ...previous,
+          [dateKey]: holidayName,
+        }));
+      }
+      showToast('Holiday updated successfully');
+    } else {
+      setCustomHolidays((previous) => [
+        ...previous,
+        {
+          date: dateKey,
+          name: holidayName,
+          kind: 'custom',
+        },
+      ]);
+      showToast('Holiday added successfully');
+    }
+
+    closeHolidayModal();
+    setActiveHolidayDate(dateKey);
+  };
+
+  const handleDeleteHoliday = () => {
+    if (!holidayToDelete) return;
+
+    if (holidayToDelete.kind === 'custom') {
+      setCustomHolidays((previous) => previous.filter((holiday) => holiday.date !== holidayToDelete.date));
+    } else {
+      setHiddenBaseHolidayDates((previous) =>
+        previous.includes(holidayToDelete.date) ? previous : [...previous, holidayToDelete.date]
+      );
+      setEditedBaseHolidayNames((previous) => {
+        if (!(holidayToDelete.date in previous)) return previous;
+        const next = { ...previous };
+        delete next[holidayToDelete.date];
+        return next;
+      });
+    }
+
+    if (isAddHolidayModalOpen && holidayModalDate === holidayToDelete.date) {
+      closeHolidayModal();
+    }
+
+    setActiveHolidayDate((current) => (current === holidayToDelete.date ? null : current));
+    setHolidayToDelete(null);
+    showToast('Holiday deleted');
   };
 
   const getNotesForRange = () => {
@@ -417,19 +610,43 @@ export function WallCalendar() {
             No holidays this month
           </p>
         ) : (
-          monthlyHolidays.map((holiday) => (
-            <div
-              key={`${holiday.date}-${holiday.name}`}
-              className="border rounded-lg p-3"
-              style={{
-                backgroundColor: HOLIDAY_TINT_COLOR[holiday.kind],
-                borderColor: HOLIDAY_BORDER_COLOR[holiday.kind],
-              }}
-            >
-              <div className="text-xs text-slate-600 mb-1">{formatHolidayDate(holiday.date)}</div>
-              <p className={`${compact ? 'text-xs' : 'text-sm'} text-slate-700`}>{holiday.name}</p>
-            </div>
-          ))
+          <AnimatePresence initial={false}>
+            {monthlyHolidays.map((holiday) => (
+              <motion.div
+                key={`${holiday.date}-${holiday.name}`}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.22 }}
+                className="relative border rounded-lg p-3 pr-16"
+                style={{
+                  backgroundColor: HOLIDAY_TINT_COLOR[holiday.kind],
+                  borderColor: HOLIDAY_BORDER_COLOR[holiday.kind],
+                }}
+              >
+                <div className="absolute right-2 top-2 flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => openEditHolidayModal(holiday)}
+                    className="rounded-md p-1 text-slate-500 hover:bg-white/70 hover:text-slate-700 transition-colors"
+                    aria-label={`Edit holiday ${holiday.name}`}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openHolidayDeleteDialog(holiday)}
+                    className="rounded-md p-1 text-red-500 hover:bg-red-50 hover:text-red-600 transition-colors"
+                    aria-label={`Delete holiday ${holiday.name}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <div className="text-xs text-slate-600 mb-1">{formatHolidayDate(holiday.date)}</div>
+                <p className={`${compact ? 'text-xs' : 'text-sm'} text-slate-700`}>{holiday.name}</p>
+              </motion.div>
+            ))}
+          </AnimatePresence>
         )}
       </div>
     </div>
@@ -475,7 +692,7 @@ export function WallCalendar() {
     if (!isAddHolidayModalOpen) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        setIsAddHolidayModalOpen(false);
+        closeHolidayModal();
       }
     };
 
@@ -486,17 +703,50 @@ export function WallCalendar() {
   }, [isAddHolidayModalOpen]);
 
   useEffect(() => {
-    if (isAddHolidayModalOpen && !canOpenAddHoliday) {
-      setIsAddHolidayModalOpen(false);
+    if (
+      isAddHolidayModalOpen &&
+      holidayModalMode === 'add' &&
+      (!holidayModalDate || Boolean(holidaysByDate[holidayModalDate]))
+    ) {
+      closeHolidayModal();
     }
-  }, [canOpenAddHoliday, isAddHolidayModalOpen]);
+  }, [holidayModalDate, holidayModalMode, holidaysByDate, isAddHolidayModalOpen]);
+
+  useEffect(() => {
+    if (!holidayToDelete) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setHolidayToDelete(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [holidayToDelete]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timeoutId = window.setTimeout(() => {
+      setToast((currentToast) => {
+        if (!currentToast || currentToast.id !== toast.id) return currentToast;
+        return null;
+      });
+    }, 2600);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [toast]);
 
   return (
     <div
-      className="relative min-h-screen overflow-hidden p-4 md:p-6 lg:h-screen lg:p-8 transition-colors duration-500"
+      className={`calendar-shell ${themeMode}-theme relative min-h-screen overflow-hidden p-4 md:p-6 lg:h-screen lg:p-8 transition-all duration-300`}
       style={{
+        ...appThemeStyles,
         ...themeStyles,
-        backgroundImage: 'linear-gradient(135deg, var(--calendar-bg-from), var(--calendar-bg-to))',
+        filter: 'var(--app-global-filter)',
+        backgroundImage: 'linear-gradient(135deg, var(--app-bg-from), var(--app-bg-to))',
       }}
     >
       <motion.div
@@ -511,6 +761,29 @@ export function WallCalendar() {
         animate={{ x: [0, -18, 10, 0], y: [0, 12, -8, 0] }}
         transition={{ duration: 28, repeat: Infinity, ease: 'easeInOut' }}
       />
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-0 z-40 transition-opacity duration-300"
+        style={{ backgroundColor: 'var(--app-dim-overlay)' }}
+      />
+
+      <div className="absolute right-4 top-4 z-20 md:right-6 md:top-6 lg:right-8 lg:top-8">
+        <motion.button
+          type="button"
+          onClick={() => setThemeMode((previousTheme) => (previousTheme === 'light' ? 'dark' : 'light'))}
+          whileTap={{ scale: 0.94 }}
+          className="rounded-full border px-3 py-2 text-lg leading-none shadow-lg hover:scale-105 transition"
+          style={{
+            backgroundColor: 'var(--app-toggle-bg)',
+            borderColor: 'var(--app-toggle-border)',
+            color: 'var(--app-toggle-color)',
+          }}
+          title={isDarkTheme ? 'Switch to light mode' : 'Switch to dark mode'}
+          aria-label={isDarkTheme ? 'Switch to light mode' : 'Switch to dark mode'}
+        >
+          {isDarkTheme ? '☀️' : '🌙'}
+        </motion.button>
+      </div>
 
       <div className="relative z-10 mx-auto max-w-7xl lg:h-full">
         {/* Desktop Layout */}
@@ -520,7 +793,12 @@ export function WallCalendar() {
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-white rounded-2xl shadow-2xl overflow-hidden h-full flex flex-col"
+              className="bg-white rounded-2xl border shadow-2xl overflow-hidden h-full flex flex-col"
+              style={{
+                backgroundColor: 'var(--app-surface)',
+                borderColor: 'var(--app-surface-border)',
+                boxShadow: 'var(--app-shadow)',
+              }}
             >
               {/* Hero Image */}
               <div className="relative h-44 xl:h-52 overflow-hidden shrink-0">
@@ -680,7 +958,12 @@ export function WallCalendar() {
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.2 }}
-              className="bg-white rounded-2xl shadow-2xl p-4 xl:p-5 h-full flex flex-col relative pb-16"
+              className="bg-white rounded-2xl border shadow-2xl p-4 xl:p-5 h-full flex flex-col relative pb-16"
+              style={{
+                backgroundColor: 'var(--app-surface)',
+                borderColor: 'var(--app-surface-border)',
+                boxShadow: 'var(--app-shadow)',
+              }}
             >
               <div className="flex items-center gap-2 mb-4">
                 <StickyNote className="w-5 h-5" style={{ color: 'var(--calendar-accent-strong)' }} />
@@ -705,7 +988,7 @@ export function WallCalendar() {
                   onClick={addNote}
                   disabled={!canAddNote}
                   className="mt-2 w-full text-white py-2 rounded-lg transition enabled:hover:brightness-95 disabled:cursor-not-allowed"
-                  style={{ backgroundColor: canAddNote ? 'var(--calendar-accent-strong)' : '#cbd5e1' }}
+                  style={{ backgroundColor: canAddNote ? 'var(--calendar-accent-strong)' : 'var(--app-clear-disabled-bg)' }}
                 >
                   Add Note
                 </button>
@@ -754,9 +1037,9 @@ export function WallCalendar() {
                 disabled={!canOpenAddHoliday}
                 className="absolute bottom-4 left-4 rounded-lg border px-3 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50"
                 style={{
-                  backgroundColor: canOpenAddHoliday ? '#ffffff' : '#f1f5f9',
-                  borderColor: canOpenAddHoliday ? 'var(--calendar-accent-strong)' : '#cbd5e1',
-                  color: canOpenAddHoliday ? 'var(--calendar-accent-strong)' : '#64748b',
+                  backgroundColor: canOpenAddHoliday ? 'var(--app-secondary-btn-enabled-bg)' : 'var(--app-secondary-btn-disabled-bg)',
+                  borderColor: canOpenAddHoliday ? 'var(--calendar-accent-strong)' : 'var(--app-surface-border)',
+                  color: canOpenAddHoliday ? 'var(--calendar-accent-strong)' : 'var(--app-secondary-btn-disabled-text)',
                 }}
               >
                 + Add Holiday
@@ -767,8 +1050,8 @@ export function WallCalendar() {
                 disabled={!hasSelection}
                 className="absolute bottom-4 right-4 rounded-lg px-3 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50"
                 style={{
-                  backgroundColor: hasSelection ? 'var(--calendar-accent-strong)' : '#e2e8f0',
-                  color: hasSelection ? '#ffffff' : '#64748b',
+                  backgroundColor: hasSelection ? 'var(--calendar-accent-strong)' : 'var(--app-clear-disabled-bg)',
+                  color: hasSelection ? '#ffffff' : 'var(--app-secondary-btn-disabled-text)',
                 }}
               >
                 Clear Selection
@@ -782,7 +1065,12 @@ export function WallCalendar() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-white rounded-2xl shadow-2xl overflow-hidden"
+            className="bg-white rounded-2xl border shadow-2xl overflow-hidden"
+            style={{
+              backgroundColor: 'var(--app-surface)',
+              borderColor: 'var(--app-surface-border)',
+              boxShadow: 'var(--app-shadow)',
+            }}
           >
             {/* Hero Image */}
             <div className="relative h-36 sm:h-40 overflow-hidden">
@@ -931,7 +1219,12 @@ export function WallCalendar() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="bg-white rounded-2xl shadow-2xl p-4 relative pb-16"
+            className="bg-white rounded-2xl border shadow-2xl p-4 relative pb-16"
+            style={{
+              backgroundColor: 'var(--app-surface)',
+              borderColor: 'var(--app-surface-border)',
+              boxShadow: 'var(--app-shadow)',
+            }}
           >
             <div className="flex items-center gap-2 mb-4">
               <StickyNote className="w-5 h-5" style={{ color: 'var(--calendar-accent-strong)' }} />
@@ -956,7 +1249,7 @@ export function WallCalendar() {
                 onClick={addNote}
                 disabled={!canAddNote}
                 className="mt-2 w-full text-white py-2 rounded-lg transition enabled:hover:brightness-95 disabled:cursor-not-allowed"
-                style={{ backgroundColor: canAddNote ? 'var(--calendar-accent-strong)' : '#cbd5e1' }}
+                style={{ backgroundColor: canAddNote ? 'var(--calendar-accent-strong)' : 'var(--app-clear-disabled-bg)' }}
               >
                 Add Note
               </button>
@@ -1005,9 +1298,9 @@ export function WallCalendar() {
               disabled={!canOpenAddHoliday}
               className="absolute bottom-4 left-4 rounded-lg border px-3 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50"
               style={{
-                backgroundColor: canOpenAddHoliday ? '#ffffff' : '#f1f5f9',
-                borderColor: canOpenAddHoliday ? 'var(--calendar-accent-strong)' : '#cbd5e1',
-                color: canOpenAddHoliday ? 'var(--calendar-accent-strong)' : '#64748b',
+                backgroundColor: canOpenAddHoliday ? 'var(--app-secondary-btn-enabled-bg)' : 'var(--app-secondary-btn-disabled-bg)',
+                borderColor: canOpenAddHoliday ? 'var(--calendar-accent-strong)' : 'var(--app-surface-border)',
+                color: canOpenAddHoliday ? 'var(--calendar-accent-strong)' : 'var(--app-secondary-btn-disabled-text)',
               }}
             >
               + Add Holiday
@@ -1018,8 +1311,8 @@ export function WallCalendar() {
               disabled={!hasSelection}
               className="absolute bottom-4 right-4 rounded-lg px-3 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50"
               style={{
-                backgroundColor: hasSelection ? 'var(--calendar-accent-strong)' : '#e2e8f0',
-                color: hasSelection ? '#ffffff' : '#64748b',
+                backgroundColor: hasSelection ? 'var(--calendar-accent-strong)' : 'var(--app-clear-disabled-bg)',
+                color: hasSelection ? '#ffffff' : 'var(--app-secondary-btn-disabled-text)',
               }}
             >
               Clear Selection
@@ -1034,7 +1327,8 @@ export function WallCalendar() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/35 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
+            style={{ backgroundColor: 'var(--app-modal-overlay)' }}
             onClick={() => setActivePicker(null)}
           >
             <motion.div
@@ -1042,7 +1336,12 @@ export function WallCalendar() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 16, scale: 0.98 }}
               transition={{ duration: 0.24 }}
-              className="w-full max-w-md rounded-2xl bg-white shadow-2xl p-5 sm:p-6"
+              className="w-full max-w-md rounded-2xl border bg-white shadow-2xl p-5 sm:p-6"
+              style={{
+                backgroundColor: 'var(--app-surface)',
+                borderColor: 'var(--app-surface-border)',
+                boxShadow: 'var(--app-shadow)',
+              }}
               onClick={(event) => event.stopPropagation()}
             >
               <div className="mb-4 space-y-3">
@@ -1186,24 +1485,30 @@ export function WallCalendar() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/35 backdrop-blur-sm"
-            onClick={() => setIsAddHolidayModalOpen(false)}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
+            style={{ backgroundColor: 'var(--app-modal-overlay)' }}
+            onClick={closeHolidayModal}
           >
             <motion.div
               initial={{ opacity: 0, y: 20, scale: 0.96 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 14, scale: 0.98 }}
               transition={{ duration: 0.24 }}
-              className="w-full max-w-sm rounded-2xl bg-white shadow-2xl p-5"
+              className="w-full max-w-sm rounded-2xl border bg-white shadow-2xl p-5"
+              style={{
+                backgroundColor: 'var(--app-surface)',
+                borderColor: 'var(--app-surface-border)',
+                boxShadow: 'var(--app-shadow)',
+              }}
               onClick={(event) => event.stopPropagation()}
             >
               <div className="mb-4 flex items-center justify-between">
-                <h3 className="text-lg text-slate-900">Add Holiday</h3>
+                <h3 className="text-lg text-slate-900">{isEditingHoliday ? 'Edit Holiday' : 'Add Holiday'}</h3>
                 <button
                   type="button"
-                  onClick={() => setIsAddHolidayModalOpen(false)}
+                  onClick={closeHolidayModal}
                   className="rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors"
-                  aria-label="Close add holiday modal"
+                  aria-label={`Close ${isEditingHoliday ? 'edit' : 'add'} holiday modal`}
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -1213,7 +1518,7 @@ export function WallCalendar() {
                 <div>
                   <p className="mb-1 text-xs text-slate-500">Selected date</p>
                   <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                    {selectedSingleDate ? format(selectedSingleDate, 'MMM d, yyyy') : 'No valid date selected'}
+                    {holidayModalDateValue ? format(holidayModalDateValue, 'MMM d, yyyy') : 'No valid date selected'}
                   </div>
                 </div>
 
@@ -1238,7 +1543,7 @@ export function WallCalendar() {
                 <div className="flex items-center justify-end gap-2 pt-1">
                   <button
                     type="button"
-                    onClick={() => setIsAddHolidayModalOpen(false)}
+                    onClick={closeHolidayModal}
                     className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
                   >
                     Cancel
@@ -1246,15 +1551,84 @@ export function WallCalendar() {
                   <button
                     type="button"
                     onClick={handleSaveHoliday}
-                    disabled={!newHolidayName.trim() || !canOpenAddHoliday}
+                    disabled={!canSubmitHolidayModal}
                     className="rounded-lg px-3 py-2 text-sm text-white transition disabled:cursor-not-allowed disabled:opacity-50"
                     style={{ backgroundColor: 'var(--calendar-accent-strong)' }}
                   >
-                    Save Holiday
+                    {isEditingHoliday ? 'Update Holiday' : 'Save Holiday'}
                   </button>
                 </div>
               </div>
             </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {holidayToDelete && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[55] flex items-center justify-center p-4 backdrop-blur-sm"
+            style={{ backgroundColor: 'var(--app-modal-overlay)' }}
+            onClick={() => setHolidayToDelete(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 18, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.98 }}
+              transition={{ duration: 0.22 }}
+              className="w-full max-w-sm rounded-2xl border bg-white shadow-2xl p-5"
+              style={{
+                backgroundColor: 'var(--app-surface)',
+                borderColor: 'var(--app-surface-border)',
+                boxShadow: 'var(--app-shadow)',
+              }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <h3 className="text-lg text-slate-900">Delete Holiday</h3>
+              <p className="mt-2 text-sm text-slate-600">Are you sure you want to delete this holiday?</p>
+              <p className="mt-2 text-sm font-medium text-slate-800">
+                {formatHolidayDate(holidayToDelete.date)} - {holidayToDelete.name}
+              </p>
+              <div className="mt-5 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setHolidayToDelete(null)}
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteHoliday}
+                  className="rounded-lg px-3 py-2 text-sm text-white transition hover:brightness-95"
+                  style={{ backgroundColor: '#dc2626' }}
+                >
+                  Delete
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            key={toast.id}
+            initial={{ opacity: 0, y: 18, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 12, scale: 0.98 }}
+            transition={{ duration: 0.22 }}
+            className="fixed bottom-5 left-1/2 z-[60] -translate-x-1/2 rounded-xl px-4 py-2 text-sm shadow-2xl"
+            style={{
+              backgroundColor: 'var(--app-toast-bg)',
+              color: 'var(--app-toast-text)',
+            }}
+          >
+            {toast.message}
           </motion.div>
         )}
       </AnimatePresence>

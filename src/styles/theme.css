@@ -179,3 +179,18 @@
     line-height: 1.5;
   }
 }
+
+.calendar-shell {
+  color-scheme: light;
+}
+
+.calendar-shell,
+.calendar-shell :where(div, button, p, span, h1, h2, h3, textarea, input) {
+  transition-property: background-color, color, border-color, box-shadow, filter, opacity;
+  transition-duration: 300ms;
+  transition-timing-function: ease;
+}
+
+.calendar-shell.dark-theme {
+  color-scheme: light;
+}
