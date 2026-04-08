@@ -1,6 +1,6 @@
 import { useState, useEffect, type CSSProperties } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronLeft, ChevronRight, StickyNote, Trash2, Calendar as CalendarIcon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, StickyNote, Trash2, Calendar as CalendarIcon, X } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, isWithinInterval, startOfWeek, endOfWeek } from 'date-fns';
 
 interface Note {
@@ -38,6 +38,11 @@ const MONTH_THEMES: MonthTheme[] = [
   { image: 'https://images.unsplash.com/photo-1613144332655-8d04c63d635a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3aW50ZXIlMjBzbm93JTIwbmF0dXJlJTIwc2NlbmV8ZW58MXx8fHwxNzc1NjU1ODUwfDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral', backgroundFrom: '#ecefff', backgroundTo: '#f9faff', accent: '#818cf8', accentSoft: '#e0e7ff', accentStrong: '#4f46e5', noteBackground: '#eef2ff', noteBorder: '#a5b4fc', noteMeta: '#3730a3' }, // December
 ];
 
+type PickerMode = 'month' | 'year';
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const YEAR_PAGE_SIZE = 12;
+
 export function WallCalendar() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedStart, setSelectedStart] = useState<Date | null>(null);
@@ -45,6 +50,11 @@ export function WallCalendar() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [noteText, setNoteText] = useState('');
   const [direction, setDirection] = useState(0);
+  const [activePicker, setActivePicker] = useState<PickerMode | null>(null);
+  const [pickerYear, setPickerYear] = useState(new Date().getFullYear());
+  const [yearRangeStart, setYearRangeStart] = useState(new Date().getFullYear() - Math.floor(YEAR_PAGE_SIZE / 2));
+  const [pickerTransitionDirection, setPickerTransitionDirection] = useState(0);
+  const [yearRangeDirection, setYearRangeDirection] = useState(0);
 
   // Load notes from localStorage
   useEffect(() => {
@@ -71,6 +81,8 @@ export function WallCalendar() {
   const calendarEnd = endOfWeek(monthEnd);
   const days = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
   const weeksInView = days.length / 7;
+  const currentYear = currentDate.getFullYear();
+  const yearRange = Array.from({ length: YEAR_PAGE_SIZE }, (_, index) => yearRangeStart + index);
 
   const currentTheme = MONTH_THEMES[currentDate.getMonth()];
   const hasSelection = Boolean(selectedStart);
@@ -85,6 +97,23 @@ export function WallCalendar() {
     '--calendar-note-border': currentTheme.noteBorder,
     '--calendar-note-meta': currentTheme.noteMeta,
   } as CSSProperties;
+  const paperTexturePrimary: CSSProperties = {
+    backgroundImage: `
+      radial-gradient(circle at 20% 18%, rgba(255,255,255,0.38), rgba(255,255,255,0) 42%),
+      radial-gradient(circle at 82% 6%, rgba(0,0,0,0.05), rgba(0,0,0,0) 38%),
+      repeating-linear-gradient(0deg, rgba(78, 62, 46, 0.045) 0px, rgba(78, 62, 46, 0.045) 1px, transparent 1px, transparent 4px),
+      repeating-linear-gradient(90deg, rgba(78, 62, 46, 0.03) 0px, rgba(78, 62, 46, 0.03) 1px, transparent 1px, transparent 5px),
+      repeating-radial-gradient(circle at 0 0, rgba(0,0,0,0.032) 0px, rgba(0,0,0,0.032) 0.7px, transparent 0.8px, transparent 3px)
+    `,
+    backgroundSize: '100% 100%, 100% 100%, 220px 220px, 180px 180px, 5px 5px',
+  };
+  const paperTextureSecondary: CSSProperties = {
+    backgroundImage: `
+      repeating-linear-gradient(18deg, rgba(255,255,255,0.12) 0px, rgba(255,255,255,0.12) 1px, transparent 1px, transparent 8px),
+      repeating-linear-gradient(-24deg, rgba(0,0,0,0.03) 0px, rgba(0,0,0,0.03) 1px, transparent 1px, transparent 10px)
+    `,
+    backgroundSize: '260px 260px, 320px 320px',
+  };
 
   const handlePrevMonth = () => {
     setDirection(-1);
@@ -94,6 +123,42 @@ export function WallCalendar() {
   const handleNextMonth = () => {
     setDirection(1);
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+  };
+
+  const openPicker = (mode: PickerMode) => {
+    setPickerYear(currentYear);
+    setYearRangeStart(currentYear - Math.floor(YEAR_PAGE_SIZE / 2));
+    setPickerTransitionDirection(0);
+    setYearRangeDirection(0);
+    setActivePicker(mode);
+  };
+
+  const stepPickerYear = (delta: number) => {
+    setPickerTransitionDirection(delta);
+    setPickerYear((previousYear) => previousYear + delta);
+  };
+
+  const stepYearRange = (delta: number) => {
+    setYearRangeDirection(delta);
+    setYearRangeStart((previousStart) => previousStart + (delta * YEAR_PAGE_SIZE));
+  };
+
+  const handleMonthSelect = (monthIndex: number) => {
+    const selectedDate = new Date(pickerYear, monthIndex, 1);
+    const currentMonthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+    if (selectedDate.getTime() === currentMonthStart.getTime()) {
+      setActivePicker(null);
+      return;
+    }
+    setDirection(selectedDate > currentMonthStart ? 1 : -1);
+    setCurrentDate(selectedDate);
+    setActivePicker(null);
+  };
+
+  const handleYearSelect = (year: number) => {
+    setPickerYear(year);
+    setPickerTransitionDirection(-1);
+    setActivePicker('month');
   };
 
   const handleDayClick = (day: Date) => {
@@ -204,15 +269,60 @@ export function WallCalendar() {
     return styles;
   };
 
+  useEffect(() => {
+    if (!activePicker) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setActivePicker(null);
+        return;
+      }
+
+      if (event.key === 'ArrowLeft') {
+        if (activePicker === 'month') {
+          stepPickerYear(-1);
+        } else {
+          stepYearRange(-1);
+        }
+        return;
+      }
+
+      if (event.key === 'ArrowRight') {
+        if (activePicker === 'month') {
+          stepPickerYear(1);
+        } else {
+          stepYearRange(1);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [activePicker]);
+
   return (
     <div
-      className="min-h-screen p-4 md:p-6 lg:h-screen lg:overflow-hidden lg:p-8 transition-colors duration-500"
+      className="relative min-h-screen overflow-hidden p-4 md:p-6 lg:h-screen lg:p-8 transition-colors duration-500"
       style={{
         ...themeStyles,
         backgroundImage: 'linear-gradient(135deg, var(--calendar-bg-from), var(--calendar-bg-to))',
       }}
     >
-      <div className="mx-auto max-w-7xl lg:h-full">
+      <motion.div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 z-0 opacity-45 mix-blend-multiply"
+        style={paperTexturePrimary}
+      />
+      <motion.div
+        aria-hidden
+        className="pointer-events-none absolute -inset-8 z-0 opacity-25 mix-blend-soft-light"
+        style={paperTextureSecondary}
+        animate={{ x: [0, -18, 10, 0], y: [0, 12, -8, 0] }}
+        transition={{ duration: 28, repeat: Infinity, ease: 'easeInOut' }}
+      />
+
+      <div className="relative z-10 mx-auto max-w-7xl lg:h-full">
         {/* Desktop Layout */}
         <div className="hidden lg:grid lg:h-full lg:grid-cols-3 lg:gap-6">
           {/* Hero Image & Calendar Section */}
@@ -243,14 +353,21 @@ export function WallCalendar() {
                 </AnimatePresence>
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
                 <div className="absolute bottom-0 left-0 right-0 p-4 xl:p-6 text-white">
-                  <motion.h1
-                    key={format(currentDate, 'MMMM yyyy')}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="text-4xl xl:text-5xl mb-1"
+                  <button
+                    type="button"
+                    onClick={() => openPicker('month')}
+                    className="text-left group rounded-md px-2 -mx-2 hover:bg-black/20 transition-colors"
+                    aria-label="Open month picker"
                   >
-                    {format(currentDate, 'MMMM')}
-                  </motion.h1>
+                    <motion.h1
+                      key={format(currentDate, 'MMMM yyyy')}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="text-4xl xl:text-5xl mb-1 group-hover:opacity-90 transition-opacity"
+                    >
+                      {format(currentDate, 'MMMM')}
+                    </motion.h1>
+                  </button>
                   <p className="text-xl xl:text-2xl opacity-90">{format(currentDate, 'yyyy')}</p>
                 </div>
               </div>
@@ -456,14 +573,21 @@ export function WallCalendar() {
               </AnimatePresence>
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
               <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-4 text-white">
-                <motion.h1
-                  key={format(currentDate, 'MMMM yyyy')}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="text-2xl sm:text-3xl mb-1"
+                <button
+                  type="button"
+                  onClick={() => openPicker('month')}
+                  className="text-left group rounded-md px-2 -mx-2 hover:bg-black/20 transition-colors"
+                  aria-label="Open month picker"
                 >
-                  {format(currentDate, 'MMMM')}
-                </motion.h1>
+                  <motion.h1
+                    key={format(currentDate, 'MMMM yyyy')}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-2xl sm:text-3xl mb-1 group-hover:opacity-90 transition-opacity"
+                  >
+                    {format(currentDate, 'MMMM')}
+                  </motion.h1>
+                </button>
                 <p className="text-lg opacity-90">{format(currentDate, 'yyyy')}</p>
               </div>
             </div>
@@ -629,6 +753,158 @@ export function WallCalendar() {
           </motion.div>
         </div>
       </div>
+
+      <AnimatePresence>
+        {activePicker && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/35 backdrop-blur-sm"
+            onClick={() => setActivePicker(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 24, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 16, scale: 0.98 }}
+              transition={{ duration: 0.24 }}
+              className="w-full max-w-md rounded-2xl bg-white shadow-2xl p-5 sm:p-6"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="mb-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-slate-500">
+                    {activePicker === 'month' ? 'Choose Month' : 'Choose Year'}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setActivePicker(null)}
+                    className="rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors"
+                    aria-label="Close picker"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (activePicker === 'month') {
+                        stepPickerYear(-1);
+                      } else {
+                        stepYearRange(-1);
+                      }
+                    }}
+                    className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors"
+                    aria-label={activePicker === 'month' ? 'Previous year' : 'Previous years'}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+
+                  {activePicker === 'month' ? (
+                    <button
+                      type="button"
+                      onClick={() => setActivePicker('year')}
+                      className="rounded-md px-3 py-1.5 text-xl text-slate-900 hover:bg-slate-100 transition-colors"
+                      aria-label="Open year picker"
+                    >
+                      {pickerYear}
+                    </button>
+                  ) : (
+                    <p className="rounded-md px-3 py-1.5 text-base text-slate-800">
+                      {yearRangeStart} - {yearRangeStart + YEAR_PAGE_SIZE - 1}
+                    </p>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (activePicker === 'month') {
+                        stepPickerYear(1);
+                      } else {
+                        stepYearRange(1);
+                      }
+                    }}
+                    className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors"
+                    aria-label={activePicker === 'month' ? 'Next year' : 'Next years'}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+
+              <AnimatePresence mode="wait" initial={false}>
+                {activePicker === 'month' ? (
+                  <motion.div
+                    key={`month-${pickerYear}`}
+                    initial={{ opacity: 0, y: pickerTransitionDirection > 0 ? 12 : -12, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: pickerTransitionDirection > 0 ? -12 : 12, scale: 0.98 }}
+                    transition={{ duration: 0.24 }}
+                    className="grid grid-cols-3 gap-2"
+                  >
+                    {MONTH_NAMES.map((month, monthIndex) => {
+                      const isSelectedMonth = monthIndex === currentDate.getMonth() && pickerYear === currentYear;
+                      return (
+                        <button
+                          key={month}
+                          type="button"
+                          onClick={() => handleMonthSelect(monthIndex)}
+                          className="rounded-lg px-3 py-2 text-sm transition-colors hover:brightness-95"
+                          style={{
+                            backgroundColor: isSelectedMonth ? 'var(--calendar-accent-strong)' : 'var(--calendar-accent-soft)',
+                            color: isSelectedMonth ? '#ffffff' : '#1f2937',
+                          }}
+                        >
+                          {month.slice(0, 3)}
+                        </button>
+                      );
+                    })}
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="year-picker"
+                    initial={{ opacity: 0, y: 14, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -14, scale: 0.98 }}
+                    transition={{ duration: 0.24 }}
+                  >
+                    <AnimatePresence mode="wait" initial={false}>
+                      <motion.div
+                        key={yearRangeStart}
+                        initial={{ opacity: 0, x: yearRangeDirection >= 0 ? 16 : -16 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: yearRangeDirection >= 0 ? -16 : 16 }}
+                        transition={{ duration: 0.24 }}
+                        className="grid grid-cols-3 gap-2"
+                      >
+                        {yearRange.map((year) => {
+                          const isSelectedYear = year === pickerYear;
+                          return (
+                            <button
+                              key={year}
+                              type="button"
+                              onClick={() => handleYearSelect(year)}
+                              className="rounded-lg px-3 py-2 text-sm transition-colors hover:brightness-95"
+                              style={{
+                                backgroundColor: isSelectedYear ? 'var(--calendar-accent-strong)' : 'var(--calendar-accent-soft)',
+                                color: isSelectedYear ? '#ffffff' : '#1f2937',
+                              }}
+                            >
+                              {year}
+                            </button>
+                          );
+                        })}
+                      </motion.div>
+                    </AnimatePresence>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
