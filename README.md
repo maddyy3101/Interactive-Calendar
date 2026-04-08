@@ -1,7 +1,6 @@
 # Interactive Calendar
 
 A responsive React + Vite wall calendar for planning date ranges, writing notes, and managing holidays.
-Designed using Figma and implemented using React in VSC
 
 ## Full Feature List
 
