@@ -2,7 +2,7 @@
 
 Interactive wall calendar built as a responsive frontend experience with date-range selection and note-taking... :P
 
-Designed using Figma and Implemented using React :)
+Designed using Figma and Implemented using React on VSC... :)
 
 ## Brief: Design And Implementation Choices
 
