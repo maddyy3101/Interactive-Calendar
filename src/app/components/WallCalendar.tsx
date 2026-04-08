@@ -1,4 +1,4 @@
-import { useState, useEffect, type CSSProperties } from 'react';
+import { useState, useEffect, useMemo, type CSSProperties } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, ChevronRight, StickyNote, Trash2, Calendar as CalendarIcon, X } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, isWithinInterval, startOfWeek, endOfWeek } from 'date-fns';
@@ -23,6 +23,12 @@ interface MonthTheme {
   noteMeta: string;
 }
 
+interface Holiday {
+  date: string;
+  name: string;
+  kind: 'national' | 'festival';
+}
+
 const MONTH_THEMES: MonthTheme[] = [
   { image: 'https://images.unsplash.com/photo-1613144332655-8d04c63d635a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3aW50ZXIlMjBzbm93JTIwbmF0dXJlJTIwc2NlbmV8ZW58MXx8fHwxNzc1NjU1ODUwfDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral', backgroundFrom: '#e8f3ff', backgroundTo: '#f8fcff', accent: '#60a5fa', accentSoft: '#dbeafe', accentStrong: '#2563eb', noteBackground: '#eff6ff', noteBorder: '#bfdbfe', noteMeta: '#1d4ed8' }, // January
   { image: 'https://images.unsplash.com/photo-1613144332655-8d04c63d635a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3aW50ZXIlMjBzbm93JTIwbmF0dXJlJTIwc2NlbmV8ZW58MXx8fHwxNzc1NjU1ODUwfDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral', backgroundFrom: '#fde7f3', backgroundTo: '#fff4fa', accent: '#f472b6', accentSoft: '#fce7f3', accentStrong: '#db2777', noteBackground: '#fff1f8', noteBorder: '#f9a8d4', noteMeta: '#be185d' }, // February
@@ -42,6 +48,36 @@ type PickerMode = 'month' | 'year';
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const YEAR_PAGE_SIZE = 12;
+const HOLIDAYS: Holiday[] = [
+  { date: '2025-01-01', name: "New Year's Day", kind: 'national' },
+  { date: '2025-01-14', name: 'Pongal', kind: 'festival' },
+  { date: '2025-01-26', name: 'Republic Day', kind: 'national' },
+  { date: '2025-08-15', name: 'Independence Day', kind: 'national' },
+  { date: '2025-10-20', name: 'Diwali', kind: 'festival' },
+  { date: '2026-01-01', name: "New Year's Day", kind: 'national' },
+  { date: '2026-01-14', name: 'Pongal', kind: 'festival' },
+  { date: '2026-01-26', name: 'Republic Day', kind: 'national' },
+  { date: '2026-08-15', name: 'Independence Day', kind: 'national' },
+  { date: '2026-10-02', name: 'Gandhi Jayanti', kind: 'national' },
+  { date: '2026-11-12', name: 'Diwali', kind: 'festival' },
+  { date: '2027-01-01', name: "New Year's Day", kind: 'national' },
+  { date: '2027-01-14', name: 'Pongal', kind: 'festival' },
+  { date: '2027-01-26', name: 'Republic Day', kind: 'national' },
+  { date: '2027-08-15', name: 'Independence Day', kind: 'national' },
+  { date: '2027-10-29', name: 'Diwali', kind: 'festival' },
+];
+const HOLIDAY_DOT_COLOR: Record<Holiday['kind'], string> = {
+  national: '#ef4444',
+  festival: '#f97316',
+};
+const HOLIDAY_TINT_COLOR: Record<Holiday['kind'], string> = {
+  national: 'rgba(239, 68, 68, 0.1)',
+  festival: 'rgba(249, 115, 22, 0.1)',
+};
+const HOLIDAY_BORDER_COLOR: Record<Holiday['kind'], string> = {
+  national: 'rgba(239, 68, 68, 0.35)',
+  festival: 'rgba(249, 115, 22, 0.35)',
+};
 
 export function WallCalendar() {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -55,6 +91,7 @@ export function WallCalendar() {
   const [yearRangeStart, setYearRangeStart] = useState(new Date().getFullYear() - Math.floor(YEAR_PAGE_SIZE / 2));
   const [pickerTransitionDirection, setPickerTransitionDirection] = useState(0);
   const [yearRangeDirection, setYearRangeDirection] = useState(0);
+  const [activeHolidayDate, setActiveHolidayDate] = useState<string | null>(null);
 
   // Load notes from localStorage
   useEffect(() => {
@@ -85,6 +122,14 @@ export function WallCalendar() {
   const yearRange = Array.from({ length: YEAR_PAGE_SIZE }, (_, index) => yearRangeStart + index);
 
   const currentTheme = MONTH_THEMES[currentDate.getMonth()];
+  const holidaysByDate = useMemo(
+    () =>
+      HOLIDAYS.reduce<Record<string, Holiday>>((accumulator, holiday) => {
+        accumulator[holiday.date] = holiday;
+        return accumulator;
+      }, {}),
+    []
+  );
   const hasSelection = Boolean(selectedStart);
   const canAddNote = Boolean(noteText.trim() && selectedStart);
   const themeStyles = {
@@ -162,6 +207,13 @@ export function WallCalendar() {
   };
 
   const handleDayClick = (day: Date) => {
+    const dayKey = format(day, 'yyyy-MM-dd');
+    if (holidaysByDate[dayKey]) {
+      setActiveHolidayDate((current) => (current === dayKey ? null : dayKey));
+    } else {
+      setActiveHolidayDate(null);
+    }
+
     if (!selectedStart || (selectedStart && selectedEnd)) {
       setSelectedStart(day);
       setSelectedEnd(null);
@@ -301,6 +353,10 @@ export function WallCalendar() {
     };
   }, [activePicker]);
 
+  useEffect(() => {
+    setActiveHolidayDate(null);
+  }, [currentDate]);
+
   return (
     <div
       className="relative min-h-screen overflow-hidden p-4 md:p-6 lg:h-screen lg:p-8 transition-colors duration-500"
@@ -422,11 +478,22 @@ export function WallCalendar() {
                   style={{ gridTemplateRows: `repeat(${weeksInView}, minmax(0, 1fr))` }}
                 >
                   {days.map((day, idx) => {
+                    const dayKey = format(day, 'yyyy-MM-dd');
                     const inRange = isDayInRange(day);
                     const isStart = isStartDate(day);
                     const isEnd = isEndDate(day);
                     const isCurrentMonth = isSameMonth(day, currentDate);
                     const isToday = isSameDay(day, new Date());
+                    const holiday = holidaysByDate[dayKey];
+                    const dayStyle = { ...getDayButtonStyle(inRange, isStart, isEnd, isToday) };
+
+                    if (holiday) {
+                      const existingShadow = dayStyle.boxShadow ? `${dayStyle.boxShadow}, ` : '';
+                      dayStyle.boxShadow = `${existingShadow}inset 0 0 0 1px ${HOLIDAY_BORDER_COLOR[holiday.kind]}`;
+                      if (!inRange && !isStart && !isEnd) {
+                        dayStyle.backgroundColor = HOLIDAY_TINT_COLOR[holiday.kind];
+                      }
+                    }
 
                     return (
                       <motion.button
@@ -436,13 +503,29 @@ export function WallCalendar() {
                       transition={{ delay: idx * 0.01 }}
                       onClick={() => handleDayClick(day)}
                       className={`
-                          h-full min-h-[2.75rem] xl:min-h-[3.25rem] rounded-lg p-1 text-sm transition-all relative
+                          group h-full min-h-[2.75rem] xl:min-h-[3.25rem] rounded-lg p-1 text-sm transition-all relative
                           ${!isCurrentMonth ? 'text-slate-300' : 'text-slate-700'}
                           ${!inRange && isCurrentMonth ? 'hover:bg-slate-100' : ''}
                         `}
-                        style={getDayButtonStyle(inRange, isStart, isEnd, isToday)}
+                        style={dayStyle}
                       >
                         <span className="relative z-10">{format(day, 'd')}</span>
+                        {holiday && (
+                          <>
+                            <span
+                              className="absolute bottom-1 left-1/2 z-20 h-1.5 w-1.5 -translate-x-1/2 rounded-full border border-white/90"
+                              style={{ backgroundColor: HOLIDAY_DOT_COLOR[holiday.kind] }}
+                            />
+                            <span className="pointer-events-none absolute -top-8 left-1/2 z-30 hidden -translate-x-1/2 -translate-y-1 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] text-white opacity-0 shadow-lg transition-all duration-200 sm:block sm:group-hover:opacity-100 sm:group-hover:translate-y-0">
+                              {holiday.name}
+                            </span>
+                            {activeHolidayDate === dayKey && (
+                              <span className="absolute bottom-1 left-1/2 z-30 max-w-[90%] -translate-x-1/2 truncate rounded bg-white/95 px-1.5 py-0.5 text-[9px] font-medium text-slate-700 shadow sm:hidden">
+                                {holiday.name}
+                              </span>
+                            )}
+                          </>
+                        )}
                         {isStart && (
                           <span className="absolute top-1 right-1 w-2 h-2 bg-white rounded-full" />
                         )}
@@ -639,11 +722,22 @@ export function WallCalendar() {
               {/* Days Grid */}
               <div className="grid grid-cols-7 gap-1">
                 {days.map((day, idx) => {
+                  const dayKey = format(day, 'yyyy-MM-dd');
                   const inRange = isDayInRange(day);
                   const isStart = isStartDate(day);
                   const isEnd = isEndDate(day);
                   const isCurrentMonth = isSameMonth(day, currentDate);
                   const isToday = isSameDay(day, new Date());
+                  const holiday = holidaysByDate[dayKey];
+                  const dayStyle = { ...getDayButtonStyle(inRange, isStart, isEnd, isToday) };
+
+                  if (holiday) {
+                    const existingShadow = dayStyle.boxShadow ? `${dayStyle.boxShadow}, ` : '';
+                    dayStyle.boxShadow = `${existingShadow}inset 0 0 0 1px ${HOLIDAY_BORDER_COLOR[holiday.kind]}`;
+                    if (!inRange && !isStart && !isEnd) {
+                      dayStyle.backgroundColor = HOLIDAY_TINT_COLOR[holiday.kind];
+                    }
+                  }
 
                   return (
                     <motion.button
@@ -653,13 +747,29 @@ export function WallCalendar() {
                       transition={{ delay: idx * 0.01 }}
                       onClick={() => handleDayClick(day)}
                       className={`
-                        aspect-square rounded-lg p-1 text-xs transition-all relative
+                        group aspect-square rounded-lg p-1 text-xs transition-all relative
                         ${!isCurrentMonth ? 'text-slate-300' : 'text-slate-700'}
                         ${!inRange && isCurrentMonth ? 'hover:bg-slate-100' : ''}
                       `}
-                      style={getDayButtonStyle(inRange, isStart, isEnd, isToday)}
+                      style={dayStyle}
                     >
                       <span className="relative z-10">{format(day, 'd')}</span>
+                      {holiday && (
+                        <>
+                          <span
+                            className="absolute bottom-1 left-1/2 z-20 h-1.5 w-1.5 -translate-x-1/2 rounded-full border border-white/90"
+                            style={{ backgroundColor: HOLIDAY_DOT_COLOR[holiday.kind] }}
+                          />
+                          <span className="pointer-events-none absolute -top-8 left-1/2 z-30 hidden -translate-x-1/2 -translate-y-1 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] text-white opacity-0 shadow-lg transition-all duration-200 sm:block sm:group-hover:opacity-100 sm:group-hover:translate-y-0">
+                            {holiday.name}
+                          </span>
+                          {activeHolidayDate === dayKey && (
+                            <span className="absolute bottom-1 left-1/2 z-30 max-w-[90%] -translate-x-1/2 truncate rounded bg-white/95 px-1 py-0.5 text-[8px] font-medium text-slate-700 shadow sm:hidden">
+                              {holiday.name}
+                            </span>
+                          )}
+                        </>
+                      )}
                     </motion.button>
                   );
                 })}
