@@ -116,7 +116,7 @@ export function WallCalendar() {
     return localStorage.getItem('theme') === 'dark' ? 'dark' : 'light';
   });
 
-  // Load notes from localStorage
+  // Restore saved notes on first load.
   useEffect(() => {
     const savedNotes = localStorage.getItem('calendar-notes');
     if (savedNotes) {
@@ -130,7 +130,7 @@ export function WallCalendar() {
     }
   }, []);
 
-  // Save notes to localStorage
+  // Keep notes persisted across refreshes.
   useEffect(() => {
     localStorage.setItem('calendar-notes', JSON.stringify(notes));
   }, [notes]);
@@ -151,7 +151,7 @@ export function WallCalendar() {
         }));
       setCustomHolidays(sanitized);
     } catch {
-      // Ignore malformed persisted holiday data.
+      // Skip bad saved data instead of breaking the calendar.
     }
   }, []);
 
@@ -181,7 +181,7 @@ export function WallCalendar() {
       }, {});
       setEditedBaseHolidayNames(sanitized);
     } catch {
-      // Ignore malformed persisted holiday override data.
+      // Skip bad saved data instead of breaking the calendar.
     }
   }, []);
 
@@ -199,7 +199,7 @@ export function WallCalendar() {
       const sanitized = parsed.filter((item) => typeof item === 'string');
       setHiddenBaseHolidayDates(sanitized);
     } catch {
-      // Ignore malformed persisted hidden holiday data.
+      // Skip bad saved data instead of breaking the calendar.
     }
   }, []);
 
@@ -786,9 +786,7 @@ export function WallCalendar() {
       </div>
 
       <div className="relative z-10 mx-auto max-w-7xl lg:h-full">
-        {/* Desktop Layout */}
         <div className="hidden lg:grid lg:h-full lg:grid-cols-3 lg:gap-6">
-          {/* Hero Image & Calendar Section */}
           <div className="lg:col-span-2 min-h-0">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -800,7 +798,6 @@ export function WallCalendar() {
                 boxShadow: 'var(--app-shadow)',
               }}
             >
-              {/* Hero Image */}
               <div className="relative h-44 xl:h-52 overflow-hidden shrink-0">
                 <AnimatePresence initial={false} custom={direction}>
                   <motion.img
@@ -840,9 +837,7 @@ export function WallCalendar() {
                 </div>
               </div>
 
-              {/* Calendar Grid */}
               <div className="p-4 xl:p-6 flex flex-1 flex-col min-h-0">
-                {/* Navigation */}
                 <div className="flex items-center justify-between mb-4">
                   <button
                     onClick={handlePrevMonth}
@@ -872,7 +867,6 @@ export function WallCalendar() {
                   </button>
                 </div>
 
-                {/* Weekday Headers */}
                 <div className="grid grid-cols-7 gap-1.5 mb-2">
                   {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
                     <div
@@ -884,7 +878,6 @@ export function WallCalendar() {
                   ))}
                 </div>
 
-                {/* Days Grid */}
                 <div
                   className="grid flex-1 min-h-0 grid-cols-7 gap-1.5 auto-rows-fr"
                   style={{ gridTemplateRows: `repeat(${weeksInView}, minmax(0, 1fr))` }}
@@ -952,7 +945,6 @@ export function WallCalendar() {
             </motion.div>
           </div>
 
-          {/* Notes Section */}
           <div className="lg:col-span-1 min-h-0">
             <motion.div
               initial={{ opacity: 0, x: 20 }}
@@ -970,7 +962,6 @@ export function WallCalendar() {
                 <h2 className="text-xl">Notes</h2>
               </div>
 
-              {/* Add Note Form */}
               <div className="mb-4">
                 <textarea
                   value={noteText}
@@ -994,7 +985,6 @@ export function WallCalendar() {
                 </button>
               </div>
 
-              {/* Notes List */}
               <div className="space-y-3 flex-1 min-h-0 overflow-y-auto pr-1">
                 {getNotesForRange().length === 0 ? (
                   <p className="text-slate-400 text-center py-8 text-sm">
@@ -1060,7 +1050,6 @@ export function WallCalendar() {
           </div>
         </div>
 
-        {/* Mobile Layout */}
         <div className="lg:hidden space-y-4">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -1072,7 +1061,6 @@ export function WallCalendar() {
               boxShadow: 'var(--app-shadow)',
             }}
           >
-            {/* Hero Image */}
             <div className="relative h-36 sm:h-40 overflow-hidden">
               <AnimatePresence initial={false} custom={direction}>
                 <motion.img
@@ -1112,9 +1100,7 @@ export function WallCalendar() {
               </div>
             </div>
 
-            {/* Calendar Grid */}
             <div className="p-3 sm:p-4">
-              {/* Navigation */}
               <div className="flex items-center justify-between mb-3">
                 <button
                   onClick={handlePrevMonth}
@@ -1144,7 +1130,6 @@ export function WallCalendar() {
                 </button>
               </div>
 
-              {/* Weekday Headers */}
               <div className="grid grid-cols-7 gap-1 mb-2">
                 {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, idx) => (
                   <div
@@ -1156,7 +1141,6 @@ export function WallCalendar() {
                 ))}
               </div>
 
-              {/* Days Grid */}
               <div className="grid grid-cols-7 gap-1">
                 {days.map((day, idx) => {
                   const dayKey = format(day, 'yyyy-MM-dd');
@@ -1214,7 +1198,6 @@ export function WallCalendar() {
             </div>
           </motion.div>
 
-          {/* Notes Section */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1231,7 +1214,6 @@ export function WallCalendar() {
               <h2 className="text-lg">Notes</h2>
             </div>
 
-            {/* Add Note Form */}
             <div className="mb-4">
               <textarea
                 value={noteText}
@@ -1255,7 +1237,6 @@ export function WallCalendar() {
               </button>
             </div>
 
-            {/* Notes List */}
             <div className="space-y-3 max-h-64 overflow-y-auto">
               {getNotesForRange().length === 0 ? (
                 <p className="text-slate-400 text-center py-6 text-sm">
@@ -1635,3 +1616,4 @@ export function WallCalendar() {
     </div>
   );
 }
+//kudos to anyone who made it this far! This component was a beast to build but I'm really happy with how it turned out. It was a great opportunity to dive deep into date handling, complex state management, and creating a polished user experience with React and Framer Motion. If you have any questions about how it works or want to see more features added, just let me know!
