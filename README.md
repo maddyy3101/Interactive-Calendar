@@ -1,6 +1,6 @@
 # Interactive-Calendar
 
-Interactive wall calendar built as a responsive frontend experience with date-range selection and note-taking.
+Interactive wall calendar built as a responsive frontend experience with date-range selection and note-taking... :P
 
 ## Brief: Design And Implementation Choices
 
