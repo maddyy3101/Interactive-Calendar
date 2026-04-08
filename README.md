@@ -1,31 +1,142 @@
-# Interactive-Calendar
+# Interactive Calendar
 
-Interactive wall calendar built as a responsive frontend experience with date-range selection and note-taking... :P
+A responsive React + Vite wall calendar for planning date ranges, writing notes, and managing holidays.
 
-Designed using Figma and Implemented using React on VSC... :)
+## Full Feature List
 
-## Brief: Design And Implementation Choices
+### 1) Calendar Layout and Navigation
+- Wall-calendar style month grid with weekday headers.
+- Previous/next month controls.
+- Month title opens a month picker modal.
+- Month picker includes year navigation arrows.
+- Year is clickable inside the picker to open a year picker view.
+- Year picker shows paged year ranges (12 years at a time) with left/right navigation.
+- Smooth animated transitions for month/year picker views.
 
-- Month-first experience: each month has a themed hero image to make navigation feel visual and seasonal.
-- Theme synced to image: UI accent colors change with the active month image so selections, buttons, and notes feel cohesive.
-- Range-based planning: users can select a single day or a date range, then attach notes to that selection.
-- Clear interactions: a `Clear Selection` button appears in the notes panel and is only active when a selection exists.
-- Responsive layout: desktop uses a split calendar/notes view, while mobile stacks content for smaller screens.
-- Local persistence: notes are stored in `localStorage` so data remains after refresh.
+### 2) Date Selection
+- Single-day selection.
+- Date-range selection (start and end).
+- If the second clicked date is earlier than the first, the range is automatically corrected.
+- Start and end dates use distinct visual markers.
+- In-range dates are highlighted.
+
+### 3) Notes System
+- Notes can be added for the selected day or selected range.
+- Note input is disabled until a selection exists.
+- Notes are stored with `startDate`, `endDate`, and timestamp.
+- Notes list is filtered by current selection overlap.
+- Notes can be deleted.
+- Empty-state message appears when no notes are available.
+
+### 4) Clear Selection Action
+- `Clear Selection` button is placed at the bottom-right of the notes panel.
+- Button is highlighted/active only when a selection exists.
+- Button is non-clickable when nothing is selected.
+
+### 5) Holiday Data and Calendar Markers
+- Includes a predefined holiday dataset (static data in-app).
+- Supports holiday kinds: `national`, `festival`, and `custom`.
+- Holiday dates show a marker inside date cells.
+- Holiday marker coexists with selection/range visuals.
+- Desktop hover shows holiday tooltip.
+- Mobile tap fallback shows holiday label on the selected holiday day.
+
+### 6) Holidays List in Notes Panel
+- Notes panel includes `Holidays this month` section.
+- Holidays are filtered by currently visible month and year.
+- Empty-state message appears when no holidays exist for that month.
+- Holiday cards are visually distinct from note cards.
+
+### 7) Add Holiday
+- `+ Add Holiday` button is placed at the bottom-left of notes panel.
+- Button is enabled only when exactly one non-holiday day is selected.
+- Add Holiday modal includes:
+- Selected date (read-only).
+- Holiday name input.
+- Validation for empty names.
+- Duplicate-date prevention.
+- Saving immediately updates the calendar marker and monthly holidays list.
+
+### 8) Edit Holiday
+- Each holiday card has an edit action.
+- Edit reuses the same modal as Add Holiday.
+- Modal is prefilled with current holiday name.
+- Date remains read-only during edit.
+- Modal title/button change to `Edit Holiday` and `Update Holiday`.
+- Update reflects instantly in calendar + holidays list.
+
+### 9) Delete Holiday
+- Each holiday card has a delete action.
+- Delete opens a confirmation modal.
+- Confirming delete removes holiday from calendar marker and monthly list.
+- Works for both custom holidays and predefined holidays (with local persistence behavior).
+
+### 10) Toast Notifications
+- Toast feedback after holiday operations:
+- `Holiday added successfully`
+- `Holiday updated successfully`
+- `Holiday deleted`
+- Toast appears with animation and auto-dismisses.
+
+### 11) Visual Theme System
+- Month-based visual themes (hero image + accent palette).
+- UI accents sync with the active month.
+- Dynamic paper-like background texture outside calendar.
+
+### 12) Light/Dim Theme Toggle
+- Global toggle button at top-right.
+- Icon changes based on mode (`🌙`/`☀️`).
+- Theme preference is persisted in `localStorage` key `theme`.
+- Dim mode keeps the same light-mode color identity, but applies low-light dimming (reduced brightness/contrast) instead of switching to a separate black/blue palette.
+- Smooth transition when switching modes.
+
+### 13) Modal and Keyboard UX
+- Month/year picker modal supports click-outside close.
+- Holiday add/edit modal supports click-outside close.
+- Delete confirmation modal supports click-outside close.
+- `Esc` key closes open picker/holiday modals.
+- Arrow keys support picker navigation where applicable.
+
+### 14) Animations and Motion
+- Animated month image transitions.
+- Animated date-cell appearance.
+- Animated holiday card enter/exit.
+- Animated modal open/close.
+- Animated toast appearance/disappearance.
+
+### 15) Responsive Behavior
+- Desktop layout: split calendar and notes panels.
+- Mobile layout: stacked calendar and notes sections.
+- Spacing/sizing adjusted for smaller screens.
+
+### 16) Local Persistence
+Data saved in `localStorage`:
+- Notes: `calendar-notes`
+- Custom holidays: `calendar-custom-holidays`
+- Edited predefined holiday names: `calendar-edited-holiday-names`
+- Hidden/deleted predefined holiday dates: `calendar-hidden-holiday-dates`
+- Theme mode: `theme`
+
+## Tech Stack
+- React + TypeScript
+- Vite
+- Tailwind CSS
+- Motion (`motion/react`)
+- date-fns
+- lucide-react
 
 ## Run Locally
-
-Prerequisite: Node.js 18+ and npm.
-
 1. Install dependencies:
-   `npm install`
+   ```bash
+   npm install
+   ```
+2. Start development server:
+   ```bash
+   npm run dev
+   ```
+3. Open the URL shown in terminal (usually `http://127.0.0.1:5173/`).
 
-2. Start the development server:
-   `npm run dev`
-
-3. Open the local URL shown in terminal (usually `http://127.0.0.1:5173/`).
-
-## Build For Production
-
-Run:
-`npm run build`
+## Build for Production
+```bash
+npm run build
+```
